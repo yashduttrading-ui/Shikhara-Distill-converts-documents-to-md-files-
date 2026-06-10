@@ -43,6 +43,52 @@ Output files are named `<original filename>.md` (e.g. `report.pdf.md`,
 `report.xlsx.md`), so a PDF and a spreadsheet with the same name don't
 overwrite each other.
 
+### Shortcuts (`distill`)
+
+If you've added the shell functions below to your `~/.bash_profile`:
+
+```bash
+# MD Vault: ask a question about a converted document, copy result to clipboard
+distill() {
+    python3 ~/MD_Vault/query.py "$@" | pbcopy
+    echo "Copied to clipboard - paste into Claude with Cmd+V"
+}
+
+# MD Vault: list converted documents
+distill-list() {
+    ls ~/MD_Vault/markdown/ | grep -v gitkeep
+}
+
+# MD Vault: list saved sections (for uploading to Claude Projects)
+distill-saved() {
+    ls ~/MD_Vault/saved/ | grep -v gitkeep
+}
+```
+
+then the daily workflow is just:
+
+```bash
+distill-list                                    # see what's been converted
+distill "some_report" "what was revenue?"       # extracts + copies to clipboard
+```
+Then `Cmd+V` to paste the result into Claude.
+
+### Saving a section permanently (`--save`)
+
+If you find yourself asking about the same section repeatedly (e.g. a
+company's income statement), save it to its own small file with `--save`:
+
+```bash
+python3 query.py tesla_2023 "income statement" --save tesla_income_statement
+# or with the shortcut:
+distill tesla_2023 "income statement" --save tesla_income_statement
+```
+
+This writes the extracted section to `saved/tesla_income_statement.md` — a
+small, standalone file you can upload to a Claude Project's knowledge base
+for permanent, zero-token-per-message access. Run `distill-saved` to see
+what you've saved.
+
 ## How conversion works
 
 - **PDF**: page-by-page text + tables via pdfplumber. Headings are detected

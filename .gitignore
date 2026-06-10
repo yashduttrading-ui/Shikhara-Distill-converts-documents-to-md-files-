@@ -1,8 +1,11 @@
 watched/*
 markdown/*
+saved/*
 !watched/.gitkeep
 !markdown/.gitkeep
+!saved/.gitkeep
 converter.log
 converter.pid
 __pycache__/
 *.pyc
+.DS_Store

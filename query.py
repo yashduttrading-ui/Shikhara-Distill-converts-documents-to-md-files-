@@ -7,11 +7,15 @@ this scans the markdown for the sections most relevant to your question and
 prints only those - typically cutting token usage by 5-20x.
 
 Usage:
-    python3 query.py <file.md or filename stem> "your question" [--top N]
+    python3 query.py <file.md or filename stem> "your question" [--top N] [--save FILENAME]
 
 Examples:
     python3 query.py "Tesla 2023 Annual Report" "what was revenue and net income?"
     python3 query.py tesla_2023 "cash flow from operations" --top 2
+
+    # Save the extracted section(s) to saved/tesla_income_statement.md
+    # for uploading to a Claude Project's knowledge base
+    python3 query.py tesla_2023 "income statement" --save tesla_income_statement
 
 If you give just a stem/partial name, it searches markdown/ for a match.
 """
@@ -23,6 +27,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 MD_DIR   = BASE_DIR / "markdown"
+SAVED_DIR = BASE_DIR / "saved"
 
 # Finance-domain synonym groups. If the question mentions any term in a group,
 # all terms in that group count as matches in the document.
@@ -142,6 +147,7 @@ def main():
     parser.add_argument("file", help="Markdown filename (or stem) in markdown/, or a full path")
     parser.add_argument("question", help="Your question, in quotes")
     parser.add_argument("--top", type=int, default=3, help="Number of top sections to return (default 3)")
+    parser.add_argument("--save", metavar="FILENAME", help="Also save the extracted section(s) to saved/FILENAME.md, for uploading to a Claude Project's knowledge base")
     args = parser.parse_args()
 
     md_path = find_file(args.file)
@@ -172,6 +178,13 @@ def main():
 
     full_tokens = estimate_tokens(text)
     out_tokens = estimate_tokens(output)
+
+    if args.save:
+        SAVED_DIR.mkdir(exist_ok=True)
+        save_name = args.save if args.save.endswith(".md") else f"{args.save}.md"
+        save_path = SAVED_DIR / save_name
+        save_path.write_text(output, encoding="utf-8")
+        print(f"Saved to {save_path}", file=sys.stderr)
 
     print(output)
     print("\n" + "=" * 60, file=sys.stderr)
