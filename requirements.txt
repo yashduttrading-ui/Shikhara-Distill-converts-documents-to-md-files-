@@ -1,0 +1,7 @@
+pdfplumber
+python-docx
+watchdog
+openpyxl
+pandas
+pytesseract
+pypdfium2

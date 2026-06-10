@@ -1,0 +1,8 @@
+watched/*
+markdown/*
+!watched/.gitkeep
+!markdown/.gitkeep
+converter.log
+converter.pid
+__pycache__/
+*.pyc
