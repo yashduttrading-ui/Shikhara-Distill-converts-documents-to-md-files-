@@ -43,6 +43,26 @@ Output files are named `<original filename>.md` (e.g. `report.pdf.md`,
 `report.xlsx.md`), so a PDF and a spreadsheet with the same name don't
 overwrite each other.
 
+### Per-section files (for manual browsing/uploading)
+
+Alongside the combined `.md` file, every document with 2+ major sections
+also gets a subfolder of small per-section files, e.g.:
+
+```
+markdown/
+  report.pdf.md              <- combined file (for distill/query.py)
+  report.pdf/                <- per-section files
+    01_overview.md
+    02_balance_sheet.md
+    03_income_statement.md
+    04_cash_flow_statement.md
+    ...
+```
+
+If you don't want to use `distill`/`query.py` at all, just open this
+subfolder, skim the filenames, and drag the one or two files you actually
+need straight into your AI chat. Each file is small and self-contained.
+
 ### Shortcuts (`distill`)
 
 If you've added the shell functions below to your `~/.bash_profile`:
@@ -101,9 +121,15 @@ what you've saved.
   document header notes which page numbers were OCR'd. Heading detection
   doesn't apply to OCR'd pages (no font info available), so they won't appear
   in "Detected Sections".
-- **DOCX**: headings, bold/italic, lists, and tables preserved.
+- **DOCX**: headings, bold/italic, lists, and tables preserved. Heading
+  1/2, Title, and Subtitle styles become file-split points.
 - **XLSX/XLS**: each sheet becomes its own `## Sheet: <name>` section/table.
 - **CSV/TSV**: single markdown table.
+
+Any document with 2+ major sections also gets split into per-section files
+(see "Per-section files" above). Tiny/misdetected sections (under ~150
+characters) are merged into the previous section so you don't end up with a
+folder full of one-line files.
 
 ## How the section extractor works
 

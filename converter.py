@@ -214,7 +214,14 @@ def pdf_to_md(path: Path) -> str:
                         _, original, level = heading
                         sections_found.append((original, i, level))
                         marker = "#" * level
-                        out_lines.append(f"\n<!-- SECTION: {original} -->\n{marker} {original}")
+                        # Only the biggest headings (level 2) become file-split
+                        # points - level 3 (bold/slightly-larger) stays as a
+                        # heading for query.py but doesn't fragment the output
+                        # into too many small files.
+                        if level == 2:
+                            out_lines.append(f"\n<!-- SECTION: {original} -->\n{marker} {original}")
+                        else:
+                            out_lines.append(f"\n{marker} {original}")
                     else:
                         out_lines.append(raw_line)
                 cleaned = "\n".join(out_lines)
@@ -285,6 +292,10 @@ def docx_to_md(path: Path) -> str:
             return f"1. {inline}"
 
         if prefix:
+            # Major headings (Heading 1/2, Title, Subtitle) become file-split
+            # points, mirroring the level-2 PDF headings.
+            if style in ("heading 1", "heading 2", "title", "subtitle"):
+                return f"\n<!-- SECTION: {inline} -->\n{prefix} {inline}"
             return f"{prefix} {inline}"
         return inline
 
@@ -367,6 +378,72 @@ def csv_to_md(path: Path) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# PER-SECTION FILE SPLITTING
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _slugify(text: str) -> str:
+    """Turns a heading into a filesystem-safe slug, e.g. 'Cash Flow!' -> 'cash_flow'."""
+    text = text.strip().lower()
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    text = text.strip("_")
+    return text or "section"
+
+
+# Sections shorter than this (in characters) are usually misdetected
+# headings (page numbers, logos, stray words) - merge them into the
+# previous section instead of giving them their own file.
+MIN_SECTION_CHARS = 150
+
+
+def split_into_sections(md_text: str):
+    """
+    Splits converted markdown on `<!-- SECTION: name -->` markers into
+    (name, content) pairs, for writing each section to its own file.
+
+    Tiny sections (likely misdetected headings) are merged into the
+    previous section. Returns [] if fewer than 2 sections remain
+    (not worth splitting).
+    """
+    marker_re = re.compile(r"<!-- SECTION: (.*?) -->")
+
+    pieces = marker_re.split(md_text)
+    # pieces alternates: [intro, name1, body1, name2, body2, ...]
+    intro = pieces[0].strip()
+    rest = pieces[1:]
+
+    sections = []
+    if len(intro) > 200:
+        sections.append(("Overview", intro))
+
+    for i in range(0, len(rest) - 1, 2):
+        name = rest[i].strip()
+        body = rest[i + 1].strip()
+        if body:
+            sections.append((name, body))
+
+    # Merge short sections into the previous one (or the next, if it's first)
+    merged = []
+    for name, body in sections:
+        if len(body) < MIN_SECTION_CHARS and merged:
+            prev_name, prev_body = merged[-1]
+            merged[-1] = (prev_name, prev_body + "\n\n" + body)
+        else:
+            merged.append((name, body))
+
+    # If the very first section ended up tiny (no previous to merge into),
+    # fold it into the second one.
+    while len(merged) >= 2 and len(merged[0][1]) < MIN_SECTION_CHARS:
+        name0, body0 = merged.pop(0)
+        name1, body1 = merged[0]
+        merged[0] = (name1, body0 + "\n\n" + body1)
+
+    if len(merged) < 2:
+        return []
+
+    return merged
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # DISPATCHER
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -396,6 +473,22 @@ def convert(src: Path) -> Path | None:
 
         out_path.write_text(md_text, encoding="utf-8")
         log.info(f"Saved: {out_path}")
+
+        # Also split into per-section files, e.g. markdown/report.pdf/01_intro.md,
+        # so users who don't want the query/distill tooling can just browse and
+        # upload whichever section files they need.
+        sections = split_into_sections(md_text)
+        if sections:
+            section_dir = OUT_DIR / src.name
+            if section_dir.exists():
+                shutil.rmtree(section_dir)
+            section_dir.mkdir(parents=True)
+            for i, (name, body) in enumerate(sections, start=1):
+                slug = _slugify(name)
+                section_path = section_dir / f"{i:02d}_{slug}.md"
+                section_path.write_text(f"# {name}\n\n{body}\n", encoding="utf-8")
+            log.info(f"Split into {len(sections)} section files in {section_dir}")
+
         return out_path
 
     except Exception as e:
