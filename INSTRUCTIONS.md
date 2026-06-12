@@ -42,8 +42,14 @@ Drop a PDF/DOCX/XLSX/CSV into the `watched/` folder. Within a couple seconds,
 check the `markdown/` folder for:
 
 - `<filename>.md` - the full converted document
-- `<filename>/` - a folder with each major section/company split into its
-  own small `.md` file, ready to upload to an AI chat
+- `<filename>/` - a folder with one small `.md` file per company (for
+  research notes / conference takeaways covering many companies), or per
+  major section for other documents - ready to drag straight into an AI chat
 
-See [README.md](README.md) for more details on how conversion and section
-splitting work, plus the optional `distill` query tool.
+For multi-company reports (e.g. a conference takeaways PDF covering 20
+companies), cover pages, intros, and disclosure/disclaimer/glossary
+boilerplate are automatically stripped out, so each file only contains that
+company's write-up.
+
+See [README.md](README.md) for more details on how conversion and
+per-company splitting work, plus the optional `distill` query tool.

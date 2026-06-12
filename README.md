@@ -1,8 +1,16 @@
 # MD Vault
 
 Drop a PDF/DOCX/XLSX/CSV into `watched/`, get a clean `.md` in `markdown/`
-within ~2 seconds — plus a folder of small per-section files you can pick
+within ~2 seconds — plus a folder of small per-company files you can pick
 from and upload directly to whatever AI you're using.
+
+It's built for recurring report-style documents that cover many companies
+in one file — sell-side research notes, conference/management-meeting
+takeaways, sector roundups, etc. — and automatically splits them into one
+file per company, with cover pages, intros, and disclosure/disclaimer
+boilerplate stripped out. Any other document (financial statements,
+contracts, plain reports) still gets converted and split by section as
+before.
 
 ## Setup
 
@@ -36,19 +44,18 @@ That's it. Within a couple seconds you'll have:
 
 ```
 markdown/
-  report.pdf.md              <- combined file with everything
-  report.pdf/                <- per-section files
-    01_overview.md
-    02_balance_sheet.md
-    03_income_statement.md
-    04_cash_flow_statement.md
+  conference_takeaways.pdf.md       <- combined file with everything
+  conference_takeaways.pdf/         <- one file per company
+    01_cartrade_tech.md
+    02_au_small_finance_bank_ltd_aubank_in.md
+    03_bank_of_baroda_bob_in.md
     ...
 ```
 
-Open the `report.pdf/` subfolder, skim the filenames, and drag the one or
-two files you actually need straight into your AI chat (Claude, ChatGPT,
-etc.). Each file is small, self-contained, and uses far fewer tokens than
-uploading the whole document.
+Open the `conference_takeaways.pdf/` subfolder, skim the filenames, and drag
+the one or two files you actually need straight into your AI chat (Claude,
+ChatGPT, etc.). Each file is small, self-contained, and uses far fewer
+tokens than uploading the whole document.
 
 Output files are named `<original filename>.md` (e.g. `report.pdf.md`,
 `report.xlsx.md`), so a PDF and a spreadsheet with the same name don't
@@ -59,8 +66,7 @@ overwrite each other.
 - **PDF**: page-by-page text + tables via pdfplumber. Headings are detected
   generically by font size/boldness (anything noticeably bigger or bolder
   than the body text) and tagged, then listed in a "Detected Sections" table
-  of contents at the top of the file. Works on any PDF, not just financial
-  reports.
+  of contents at the top of the file.
 - **Scanned/image-only pages**: if a page has no text layer, it's run through
   Tesseract OCR automatically and marked `*(text extracted via OCR)*`. The
   document header notes which page numbers were OCR'd. Heading detection
@@ -71,9 +77,37 @@ overwrite each other.
 - **XLSX/XLS**: each sheet becomes its own `## Sheet: <name>` section/table.
 - **CSV/TSV**: single markdown table.
 
-Any document with 2+ major sections also gets split into per-section files.
-Tiny/misdetected sections (under ~150 characters) are merged into the
-previous section so you don't end up with a folder full of one-line files.
+## How per-company splitting works
+
+For PDFs, after the generic heading pass above, a second pass looks for the
+common sell-side rating-note pattern: a company name on its own line,
+immediately followed by a rating line like `ADD | CMP: Rs 1,772 | TP: Rs
+2,150` or `NOT COVERED | CMP: Rs 520`. Each match becomes a file-split point,
+even if the company name wasn't picked up as a "big" heading on its own.
+
+When the document is split into per-section/per-company files, a few
+cleanup passes run automatically:
+
+- **Cover pages and intros dropped**: the text before the first detected
+  heading, plus headings that look like cover-page banners (e.g. "Day 1 Key
+  Takeaways", "Conference Takeaways"), are dropped entirely.
+- **Boilerplate cut off**: once a heading like "Disclosures", "Disclaimers",
+  "Glossary", "Ratings & Definitions", "Stocks Mentioned", or "Research
+  Analyst" certifications is reached, everything from there to the end of the
+  document is dropped. This also catches that boilerplate when it shows up
+  *inside* the last company's section (e.g. a ratings table or a
+  Bloomberg/BofA "Stocks Mentioned" ticker table tacked onto the last
+  write-up) and trims it from there.
+- **Non-company sections dropped**: if the document tags company headings
+  with a ticker (e.g. "AU Small Finance Bank Ltd (AUBANK IN)"), any section
+  *without* a ticker — panel/topic write-ups, sector "Takeaways" headers,
+  etc. — is dropped, leaving only the per-company files.
+- **Tiny sections merged**: sections under ~150 characters (likely
+  misdetected headings — page numbers, logos, stray words) are merged into
+  the previous section instead of getting their own file.
+
+If fewer than 2 sections remain after all of this, no per-section folder is
+created — you just get the combined `.md` file.
 
 ## Optional: smart section extractor (`distill`)
 
