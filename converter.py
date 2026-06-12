@@ -378,6 +378,48 @@ def csv_to_md(path: Path) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# COMPANY HEADING DETECTION (for sell-side research notes)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Common Indian sell-side rating-note convention: each company's write-up
+# starts with the company name on its own line, immediately followed by a
+# rating line like "ADD | CMP: Rs 1,772 | TP: Rs 2,150" or
+# "NOT COVERED | CMP: Rs 520".
+COMPANY_RATING_RE = re.compile(
+    r"^(BUY|ADD|REDUCE|SELL|HOLD|ACCUMULATE|NOT COVERED)\b.*\bCMP\b",
+    re.IGNORECASE,
+)
+
+
+def _mark_company_headings(md_text: str) -> str:
+    """
+    Company names in rating notes are often only bold (not a noticeably
+    bigger font), so the generic font-based heading detector misses them.
+    This scans for rating lines and retroactively marks the line above as a
+    `<!-- SECTION: ... -->` heading so split_into_sections() treats each
+    company as a file-split point.
+    """
+    lines = md_text.split("\n")
+    for i, line in enumerate(lines):
+        if not COMPANY_RATING_RE.match(line.strip()):
+            continue
+
+        j = i - 1
+        while j >= 0 and not lines[j].strip():
+            j -= 1
+        if j < 0:
+            continue
+
+        name = lines[j].strip()
+        if name.startswith(("<!--", "#", "|")) or len(name) > 80:
+            continue
+
+        lines[j] = f"\n<!-- SECTION: {name} -->\n## {name}"
+
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # PER-SECTION FILE SPLITTING
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -460,6 +502,7 @@ def convert(src: Path) -> Path | None:
     try:
         if ext == ".pdf":
             md_text = pdf_to_md(src)
+            md_text = _mark_company_headings(md_text)
         elif ext in {".docx", ".doc"}:
             md_text = docx_to_md(src)
         elif ext in {".xlsx", ".xls"}:
