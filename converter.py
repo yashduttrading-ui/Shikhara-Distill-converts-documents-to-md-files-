@@ -476,6 +476,12 @@ _TABLE_HEADER_RE = re.compile(r"^\|\s*([A-Z][A-Z\s&/]{2,40})\s*\|")
 # column headers instead.
 _STOCKS_TABLE_RE = re.compile(r"bloomberg\s+ticker", re.IGNORECASE)
 
+# Matches a ticker tag in a company heading, e.g. "(AUBANK IN)",
+# "(POWF IN)", "(BLSTR IN, Not covered )". Used to tell company sections
+# apart from non-company sections (panel/topic write-ups, sector "Takeaways"
+# headers) in documents that tag each company heading with its ticker.
+_TICKER_HEADING_RE = re.compile(r"\([A-Z0-9.&]{2,15}\s+IN\b[^)]*\)")
+
 
 def _truncate_at_stop_heading(body: str) -> str:
     """
@@ -539,6 +545,12 @@ def split_into_sections(md_text: str):
         if not body:
             continue
         sections.append((name, body))
+
+    # If this document tags company headings with a ticker (e.g. "(AUBANK
+    # IN)"), drop every section that *isn't* a company - panel/topic
+    # write-ups and sector "Takeaways" headers don't carry a ticker.
+    if any(_TICKER_HEADING_RE.search(name) for name, _ in sections):
+        sections = [(name, body) for name, body in sections if _TICKER_HEADING_RE.search(name)]
 
     # Merge short sections into the previous one (or the next, if it's first)
     merged = []
