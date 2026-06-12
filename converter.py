@@ -391,17 +391,25 @@ COMPANY_RATING_RE = re.compile(
 )
 
 
+_HEADING_LINE_RE = re.compile(r"^#{1,6}\s*(.*)")
+
+
 def _mark_company_headings(md_text: str) -> str:
     """
     Company names in rating notes are often only bold (not a noticeably
-    bigger font), so the generic font-based heading detector misses them.
-    This scans for rating lines and retroactively marks the line above as a
-    `<!-- SECTION: ... -->` heading so split_into_sections() treats each
-    company as a file-split point.
+    bigger font), so the generic font-based heading detector misses them -
+    or detects both the company name AND its rating line as level-3 (###)
+    headings, neither of which becomes a file-split point on its own.
+    This scans for rating lines (stripping any existing heading markers) and
+    retroactively marks the line above as a `<!-- SECTION: ... -->` heading
+    so split_into_sections() treats each company as a file-split point.
     """
     lines = md_text.split("\n")
     for i, line in enumerate(lines):
-        if not COMPANY_RATING_RE.match(line.strip()):
+        stripped = line.strip()
+        m = _HEADING_LINE_RE.match(stripped)
+        content = m.group(1).strip() if m else stripped
+        if not COMPANY_RATING_RE.match(content):
             continue
 
         j = i - 1
@@ -410,8 +418,13 @@ def _mark_company_headings(md_text: str) -> str:
         if j < 0:
             continue
 
-        name = lines[j].strip()
-        if name.startswith(("<!--", "#", "|")) or len(name) > 80:
+        prev = lines[j].strip()
+        if prev.startswith(("<!--", "|")):
+            continue
+
+        pm = _HEADING_LINE_RE.match(prev)
+        name = pm.group(1).strip() if pm else prev
+        if not name or len(name) > 80:
             continue
 
         lines[j] = f"\n<!-- SECTION: {name} -->\n## {name}"
