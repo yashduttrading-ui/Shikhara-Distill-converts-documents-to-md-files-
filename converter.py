@@ -449,32 +449,96 @@ def _slugify(text: str) -> str:
 # previous section instead of giving them their own file.
 MIN_SECTION_CHARS = 150
 
+# Headings matching these patterns are boilerplate that marks the end of the
+# actual content (disclosures, glossaries, analyst certifications, etc.) -
+# once one is seen, everything from there to the end of the document is
+# dropped entirely.
+STOP_HEADING_RE = re.compile(
+    r"disclosure|disclaimer|glossary|stocks?\s+mentioned|research\s+analyst"
+    r"|ratings?\s*&?\s*definitions|important\s+notice|certification",
+    re.IGNORECASE,
+)
+
+# Headings matching these patterns are cover-page/title material (conference
+# day titles, "Key Takeaways" banners, etc.) rather than real content about a
+# company - drop just this one section, but keep going.
+SKIP_HEADING_RE = re.compile(
+    r"^day\s+\d+|key\s+takeaways|conference\s+takeaways|takeaways\s*$",
+    re.IGNORECASE,
+)
+
+# Matches a markdown table header row whose first cell is a short ALL-CAPS
+# label, e.g. "| RATINGS & DEFINITIONS |  |  |  |" or "| DISCLAIMERS |".
+_TABLE_HEADER_RE = re.compile(r"^\|\s*([A-Z][A-Z\s&/]{2,40})\s*\|")
+
+# A "Stocks Mentioned" appendix table often has no text heading at all - it's
+# just a Bloomberg/BofA ticker table dropped onto the page. Detect it by its
+# column headers instead.
+_STOCKS_TABLE_RE = re.compile(r"bloomberg\s+ticker", re.IGNORECASE)
+
+
+def _truncate_at_stop_heading(body: str) -> str:
+    """
+    Boilerplate like "RATINGS & DEFINITIONS" / "DISCLAIMERS" is often only a
+    level-3 heading or a table header row, so it doesn't get its own
+    `<!-- SECTION: ... -->` marker and ends up appended to the last real
+    section instead. Scan line-by-line for a heading or table-header row
+    matching STOP_HEADING_RE, or a "Stocks Mentioned"-style ticker table, and
+    cut everything from there (and the table it belongs to) onward.
+    """
+    lines = body.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        m = _HEADING_LINE_RE.match(stripped)
+        if m:
+            text = m.group(1).strip()
+        else:
+            tm = _TABLE_HEADER_RE.match(stripped)
+            text = tm.group(1).strip() if tm else None
+        if text and STOP_HEADING_RE.search(text):
+            return "\n".join(lines[:i]).strip()
+        if _STOCKS_TABLE_RE.search(stripped):
+            j = i
+            while j > 0 and (lines[j - 1].strip().startswith("|") or not lines[j - 1].strip()):
+                j -= 1
+            return "\n".join(lines[:j]).strip()
+    return body
+
 
 def split_into_sections(md_text: str):
     """
     Splits converted markdown on `<!-- SECTION: name -->` markers into
     (name, content) pairs, for writing each section to its own file.
 
-    Tiny sections (likely misdetected headings) are merged into the
-    previous section. Returns [] if fewer than 2 sections remain
-    (not worth splitting).
+    The intro before the first marker (titles, analyst lists, etc.) is
+    dropped. Headings matching SKIP_HEADING_RE (cover-page/title banners)
+    are dropped too. Once a heading matches STOP_HEADING_RE (disclosures,
+    glossary, etc.), that section and everything after it is dropped.
+
+    Tiny remaining sections (likely misdetected headings) are merged into
+    the previous section. Returns [] if fewer than 2 sections remain (not
+    worth splitting).
     """
     marker_re = re.compile(r"<!-- SECTION: (.*?) -->")
 
     pieces = marker_re.split(md_text)
     # pieces alternates: [intro, name1, body1, name2, body2, ...]
-    intro = pieces[0].strip()
     rest = pieces[1:]
 
     sections = []
-    if len(intro) > 200:
-        sections.append(("Overview", intro))
-
     for i in range(0, len(rest) - 1, 2):
         name = rest[i].strip()
         body = rest[i + 1].strip()
-        if body:
-            sections.append((name, body))
+        if not body:
+            continue
+        if STOP_HEADING_RE.search(name):
+            break
+        if SKIP_HEADING_RE.search(name):
+            continue
+        body = _truncate_at_stop_heading(body)
+        if not body:
+            continue
+        sections.append((name, body))
 
     # Merge short sections into the previous one (or the next, if it's first)
     merged = []
